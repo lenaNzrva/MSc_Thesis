@@ -3,73 +3,86 @@ import numpy as np
 from scipy.linalg import lstsq
 import math
 import time
+from collections import deque
 
 class OrientEstimation:
     def __init__(self, weight, height):
         
         self.W = weight
         self.H = height
-        self.X = []
-        self.Y = []
-        self.X_norm = []
-        self.Y_norm = []
+        self.X = deque(maxlen=2)
+        self.Y = deque(maxlen=2)
         
         self.ang = 90
-        self.Len = []
         
         self.startX = time.time()
         self.startY = time.time()
         
-        
     @staticmethod
-    def green_landmarks(self, coord_last):
-        img = self.color_image.copy()
-        th = 3
-        color = (0,255,0)
+    def interpolate_pixels_along_line(x0, y0, x1, y1):
+        pixels = []
+        steep = abs(y1 - y0) > abs(x1 - x0)
 
-        for i in range(4):
-            cv2.line(img, (int(coord_last[i][1]), int(coord_last[i][2])), 
-                     (int(coord_last[i+1][1]), int(coord_last[i+1][2])), color, th)
+        # Ensure that the path to be interpolated is shallow and from left to right
+        if steep:
+            t = x0
+            x0 = y0
+            y0 = t
 
-        for i in range(5, 8):
-            cv2.line(img, (int(coord_last[i][1]), int(coord_last[i][2])), 
-                     (int(coord_last[i+1][1]), int(coord_last[i+1][2])), color, th)
+            t = x1
+            x1 = y1
+            y1 = t
 
-        for i in range(9, 12):
-            cv2.line(img, (int(coord_last[i][1]), int(coord_last[i][2])), 
-                     (int(coord_last[i+1][1]), int(coord_last[i+1][2])), color, th)
+        if x0 > x1:
+            t = x0
+            x0 = x1
+            x1 = t
 
-        for i in range(13, 16):
-            cv2.line(img, (int(coord_last[i][1]), int(coord_last[i][2])), 
-                     (int(coord_last[i+1][1]), int(coord_last[i+1][2])), color, th)
+            t = y0
+            y0 = y1
+            y1 = t
 
-        for i in range(17, 20):
-            cv2.line(img, (int(coord_last[i][1]), int(coord_last[i][2])), 
-                     (int(coord_last[i+1][1]), int(coord_last[i+1][2])), color, th)
+        dx = x1 - x0
+        dy = y1 - y0
+        gradient = dy / dx  # slope
 
+        # Get the first given coordinate and add it to the return list
+        x_end = round(x0)
+        y_end = y0 + (gradient * (x_end - x0))
+        xpxl0 = x_end
+        ypxl0 = round(y_end)
+        if steep:
+            pixels.extend([(ypxl0, xpxl0), (ypxl0 + 1, xpxl0)])
+        else:
+            pixels.extend([(xpxl0, ypxl0), (xpxl0, ypxl0 + 1)])
 
-        img = cv2.line(img, (int(coord_last[0][1]), int(coord_last[0][2])), 
-                       (int(coord_last[5][1]), int(coord_last[5][2])), color, th)
-        img = cv2.line(img, (int(coord_last[0][1]), int(coord_last[0][2])), 
-                       (int(coord_last[9][1]), int(coord_last[9][2])), color, th)
-        img = cv2.line(img, (int(coord_last[0][1]), int(coord_last[0][2])), 
-                       (int(coord_last[13][1]), int(coord_last[13][2])), color, th)
-        img = cv2.line(img, (int(coord_last[0][1]), int(coord_last[0][2])), 
-                       (int(coord_last[17][1]), int(coord_last[17][2])), color, th)
+        interpolated_y = y_end + gradient
 
-        img = cv2.line(img, (int(coord_last[5][1]), int(coord_last[5][2])), 
-                       (int(coord_last[9][1]), int(coord_last[9][2])), color, th)
-        img = cv2.line(img, (int(coord_last[9][1]), int(coord_last[9][2])), 
-                       (int(coord_last[13][1]), int(coord_last[13][2])), color, th)
-        img = cv2.line(img, (int(coord_last[13][1]), int(coord_last[13][2])), 
-                       (int(coord_last[17][1]), int(coord_last[17][2])), color, 5)
+        # Get the second given coordinate to give the main loop a range
+        x_end = round(x1)
+        y_end = y1 + (gradient * (x_end - x1))
+        xpxl1 = x_end
+        ypxl1 = round(y_end)
 
+        # Loop between the first x coordinate and the second x coordinate, interpolating the y coordinates
+        for x in range(xpxl0 + 1, xpxl1):
+            if steep:
+                pixels.extend([(math.floor(interpolated_y), x), (math.floor(interpolated_y) + 1, x)])
 
-        self.depth_image[np.sum(img == [0,255,0], axis=2) < 3] = 0
+            else:
+                pixels.extend([(x, math.floor(interpolated_y)), (x, math.floor(interpolated_y) + 1)])
 
-        return self.depth_image
+            interpolated_y += gradient
 
+        # Add the second given coordinate to the given list
+        if steep:
+            pixels.extend([(ypxl1, xpxl1), (ypxl1 + 1, xpxl1)])
+        else:
+            pixels.extend([(xpxl1, ypxl1), (xpxl1, ypxl1 + 1)])
 
+        return pixels
+    
+    
     ## считаем угол плоскости
     @staticmethod
     def distance(self, a1, b1, c1, a2, b2, c2):
@@ -85,118 +98,73 @@ class OrientEstimation:
     
     @staticmethod
     def Get_Yaw(self):
-        coordX, coordY, coordX_norm,coordY_norm = [], [], [], []
-        
-        for id, lm in enumerate(self.handLms.landmark):
-            cx_norm, cy_norm = lm.x, lm.y #lm.x*width, lm.y*height
-            cx, cy = lm.x*self.W, lm.y*self.H
-            coordX.append(cx)
-            coordY.append(cy) 
-            coordX_norm.append(cx_norm)
-            coordY_norm.append(cy_norm) 
-            
-        self.X.append(coordX)
-        self.Y.append(coordY)
-        
-        self.X_norm.append(coordX_norm)
-        self.Y_norm.append(coordY_norm)
-        
-        endX = time.time()
-        try:
-            velX = self.Vel(np.array(self.X[-1])-np.array(self.X[-2]), endX-self.startX)
-            velX_norm = self.Vel(np.array(self.X_norm[-1])-np.array(self.X_norm[-2]), endX-self.startX)
-        except:
-            velX = self.Vel(np.zeros(21), endX-self.startX)
-            velX_norm = self.Vel(np.zeros(21), endX-self.startX)
-            
-        self.startX = time.time()
-
-        endY = time.time()    
-        try:
-            velY = self.Vel(np.array(self.Y[-1])-np.array(self.Y[-2]), endY-self.startY)
-        except:
-            velY = self.Vel(np.zeros(21), endY-self.startY)
-        self.startY = time.time()
-            
-            
-        testX = np.array([velX[8], velX[12], velX[16]])
-        testY = np.array([velY[8], velY[12], velY[16]])
-        
-        th = 0
-        ang = np.arctan((coordY[12]-coordY[0])/(coordX[12]-coordX[0]))*180/np.pi
+        ang = np.arctan((self.cord[12][1]-self.cord[0][1])/(self.cord[12][0]-self.cord[0][0]))*180/np.pi
         if ang < 0:
             ang = 180 + ang
-                
-        len_ = np.sqrt((coordY[12]-coordY[0]) **2 + (coordX[12]-coordX[0])**2)
-        self.Len.append(len_)
-        try:
-            deltalen = abs(self.Len[-2] - self.Len[-1])
-        except: deltalen = 10
-
-        lenth = 4
-        # print(velX_norm[0])
-        if abs(velX_norm[0]) < 0.1 and abs(velX_norm[12]) > 0.1:
-            # print("rot")
-            if np.all(testX > -th)  and np.all(testY > -th) and velX[0] < th: # and velY[0] < th:
-                if deltalen < lenth:
-                    self.ang = ang
-                    # print("Yaw left", ang)
-
-            elif np.all(testX < th)  and np.all(testY < th) and velX[0] > -th: # and velY[0] > -th:
-                if deltalen < lenth:
-                    self.ang = ang
-                    # print("Yaw right", ang)
-
-            elif np.all(testX > -th)  and np.all(testY < th) and velX[0] < th: # and velY[0] > -th:
-                if deltalen < lenth:
-                    self.ang = ang
-                    # print("Yaw left", ang)
-
-            elif np.all(testX < th)  and np.all(testY > -th) and velX[0] > -th: # and velY[0] < th:
-                if deltalen < lenth:
-                    self.ang = ang
-                    # print("Yaw right", ang)
             
-            
-            
+        self.ang = ang
+        
+        
     @staticmethod
     def Get_Roll_Pitch(self):
         AngleOY = None; AngleOZ = None
-        cord = []
-        for id, lm in enumerate(self.handLms.landmark):
-            cx, cy = int(lm.x*self.W), int(lm.y*self.H)
 
-            d = None
-            if cy >= 0 and cy < self.H and cx >= 0 and cx < self.W :
-                d = self.depth_image[cy, cx]
+        CONNECTIONS = [(3, 4),
+                         (0, 5),
+                         (17, 18),
+                         (0, 17),
+                         (13, 14),
+                         (13, 17),
+                         (18, 19),
+                         (5, 6),
+                         (5, 9),
+                         (14, 15),
+                         (0, 1),
+                         (9, 10),
+                         (1, 2),
+                         (9, 13),
+                         (10, 11),
+                         (19, 20),
+                         (6, 7),
+                         (15, 16),
+                         (2, 3),
+                         (11, 12),
+                         (7, 8)]
 
-            cord.append((id, lm.x*self.W , lm.y*self.H, d))
+        k = 1
+        knn = np.linspace(-k,k,k*2+1, dtype="int")
 
-        depth_mask = self.green_landmarks(self, cord)
+        pixels_list = []
+        for connections in CONNECTIONS:
+            pixels = self.interpolate_pixels_along_line(self.cord[connections[0]][0], self.cord[connections[0]][1], self.cord[connections[1]][0], self.cord[connections[1]][1])
 
-        new_mask = depth_mask.copy()
-        OneD = depth_mask.flatten()
-        NoZeros = OneD[OneD != 0]
-        fltred = NoZeros.copy()
-        NoZeros_sort = NoZeros.copy()
-        NoZeros_sort.sort()
+            for p in pixels:
+                for i in knn:
+                    pixels_list.append([p[0]+i, p[1]+i])
 
-        test = np.diff(NoZeros_sort)
+        pixels_list = np.array(pixels_list)
+        
+        Z = np.array([self.depth_image[p[1],p[0]] for p in pixels_list])
+        X = pixels_list[:,1]
+        Y = pixels_list[:,0]
 
-        try:
-            ind = test[test>50][0]
-            check = True
-        except:
-            check = False
-        if check:
-            where = np.where(test == ind)
-            th = NoZeros_sort[where[0][0]+1]
-            fltred = NoZeros[NoZeros < th]
-            new_mask[new_mask >= th] = 0
+        X = X[Z != 0]
+        Y = Y[Z != 0]
+        Z = Z[Z != 0]
 
-        X = np.where(new_mask!=0)[0]
-        Y = np.where(new_mask!=0)[1]
-        Z = np.array([new_mask[X[i], Y[i]] for i in range(len(X))])
+        Z_copy = Z.copy()
+        Z_copy.sort()
+        
+        test = np.diff(Z_copy)
+        
+        if test[np.argmax(test)] > 50:
+            max_ind = np.argmax(test)
+            th = Z_copy[max_ind+1]
+            
+            X = X[Z < th]
+            Y = Y[Z < th]
+            Z = Z[Z < th]
+
 
         tmp_A = []
         tmp_b = []
@@ -218,27 +186,17 @@ class OrientEstimation:
 
         return AngleOY, AngleOZ
     
-    @staticmethod
-    def FindTheAngle(self, cord):
-        point1 = cord[-2]
-        point2 = cord[-1]
-        x_values = [point1[1], point2[1]]
-        y_values = [point1[2], point2[2]]
-
-        deltaY = y_values[0] - y_values[1]
-        deltaX = x_values[0] - x_values[1]
-
-        angleInDegrees = np.arctan(deltaY / deltaX) * 180 / np.pi
-        if angleInDegrees < 0: 
-            angleInDegrees = 179 + angleInDegrees
-        return angleInDegrees
-    
     
     def OrientStart(self, color_image, depth_image, handLms):
         self.color_image = color_image
         self.depth_image = depth_image
         self.handLms = handLms
-
+        
+        self.cord = []
+        for id, lm in enumerate(self.handLms.landmark):
+            cx, cy = lm.x*self.W, lm.y*self.H
+            
+            self.cord.append((cx, cy))
 
         roll, pitch = self.Get_Roll_Pitch(self)
         self.Get_Yaw(self)

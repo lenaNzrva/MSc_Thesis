@@ -3,13 +3,14 @@ import cv2
 import time
 import itertools
 from scipy import signal
+from collections import deque
 
 class PoseEstimation():
     def __init__(self, wight, heigh):
         
         self.W = wight
         self.H = heigh
-        self.X, self.Y, self.Z = [], [], []
+        self.X, self.Y, self.Z = deque(maxlen=2), deque(maxlen=2), deque(maxlen=2)
     
     @staticmethod
     def Vel(deltaX, deltaT):

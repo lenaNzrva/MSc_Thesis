@@ -51,7 +51,7 @@ def main():
 
             mpDraw.draw_landmarks(color_image, handLms, mpHands.HAND_CONNECTIONS)
 
-            # poseEstimation.PoseStart(handLms, depth_image)
+            poseEstimation.PoseStart(handLms, depth_image)
             orientEstimation.OrientStart(color_image, depth_image, handLms)
 
 
