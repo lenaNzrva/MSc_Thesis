@@ -201,4 +201,5 @@ class OrientEstimation:
         roll, pitch = self.Get_Roll_Pitch(self)
         self.Get_Yaw(self)
         
-        print("R:", int(roll), "P:", int(pitch), "Y:", int(self.ang))
+        # print("R:", int(roll), "P:", int(pitch), "Y:", int(self.ang))
+        return roll, pitch, self.ang
